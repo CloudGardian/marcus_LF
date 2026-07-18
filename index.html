@@ -344,6 +344,45 @@
     padding:16px 22px; backdrop-filter:blur(6px); box-shadow:0 0 16px rgba(56,224,255,.14); }
   body.touch #controls{ display:none; }
   body.touch #touchNote{ display:block; }
+
+  /* ==========================================================================
+     SCENE SELECT + INTRO VIDEO (home page)
+     ========================================================================== */
+  #menu{ justify-content:flex-start; padding-top:3vh; overflow-y:auto; }
+  #introWrap{ position:relative; width:min(640px,86vw); aspect-ratio:16/7; margin:0 auto 6px;
+    border-radius:18px; overflow:hidden; border:1px solid rgba(140,200,255,.35);
+    box-shadow:0 12px 40px rgba(0,0,0,.6), 0 0 30px rgba(56,224,255,.25); background:#04040e; }
+  #introVid{ width:100%; height:100%; object-fit:cover; display:block; }
+  #introFade{ position:absolute; inset:0; pointer-events:none;
+    background:linear-gradient(180deg, transparent 55%, rgba(5,1,15,.9)); }
+  #menu h1{ font-size:clamp(30px,6.5vw,70px); margin:4px 0 0; }
+  #menu .tag{ margin:8px 0 14px; }
+
+  #sceneSelect{ display:grid; grid-template-columns:repeat(5,1fr); gap:12px;
+    width:min(920px,94vw); margin:6px auto 4px; }
+  .sceneCard{ pointer-events:auto; cursor:pointer; position:relative; padding:16px 8px 12px;
+    border-radius:16px; text-align:center; transition:transform .15s, box-shadow .15s, border-color .15s;
+    background:linear-gradient(170deg, color-mix(in srgb, var(--c) 22%, rgba(10,10,30,.7)), rgba(8,8,24,.75));
+    border:1px solid color-mix(in srgb, var(--c) 55%, transparent);
+    box-shadow:0 8px 22px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.15); backdrop-filter:blur(6px); }
+  .sceneCard:hover{ transform:translateY(-6px) scale(1.04);
+    box-shadow:0 16px 34px rgba(0,0,0,.6), 0 0 26px var(--c), inset 0 1px 0 rgba(255,255,255,.3);
+    border-color:var(--c); }
+  .sc-ic{ font-size:34px; filter:drop-shadow(0 0 10px var(--c)); }
+  .sc-n{ font-weight:900; letter-spacing:1px; margin-top:6px; font-size:15px; color:#eaf4ff; }
+  .sc-d{ font-size:11px; opacity:.7; margin-top:2px; }
+  .sc-b{ font-size:10px; letter-spacing:1px; margin-top:7px; color:var(--c); font-weight:800; }
+  .pickHint{ margin:12px 0 4px; font-size:13px; letter-spacing:2px; opacity:.7; }
+  #kbdNote{ margin-top:10px; font-size:12px; opacity:.6; }
+  #kbdNote kbd{ display:inline-block; padding:1px 6px; border-radius:5px; background:#14213f;
+    border:1px solid rgba(140,200,255,.4); font-family:inherit; font-size:11px; }
+  body.touch #kbdNote{ display:none; }
+
+  @media (max-width:720px){
+    #sceneSelect{ grid-template-columns:repeat(2,1fr); width:92vw; }
+    #introWrap{ width:92vw; aspect-ratio:16/8; }
+    #menu h1{ font-size:34px; }
+  }
 </style>
 </head>
 <body>
@@ -366,8 +405,8 @@
     </div>
 
     <div id="sceneBanner">
-      <div class="name titleFont glow">SPACE — Solar System</div>
-      <div class="sub">SCENE 1 OF 5</div>
+      <div id="sceneName" class="name titleFont glow">SPACE — Solar System</div>
+      <div id="sceneSub" class="sub">SCENE 1 OF 5</div>
     </div>
 
     <div id="objective">
@@ -376,7 +415,7 @@
     </div>
 
     <div id="bossBar">
-      <div class="lbl titleFont">◈ VOID TITAN ◈</div>
+      <div id="bossName" class="lbl titleFont">◈ VOID TITAN ◈</div>
       <div class="barWrap"><div id="bossFill" class="barFill"></div></div>
     </div>
 
@@ -413,23 +452,42 @@
 
   <!-- ===================== MENU ===================== -->
   <div id="menu" class="screen hidden">
-    <h1 class="titleFont">Legendary<br>Fighter</h1>
-    <div class="tag">▲ THE LEGENDARY NINJA RISES ▲</div>
-    <div class="scene1">SCENE 1 · SPACE — RESCUE THE CAPTIVES</div>
-    <button class="btn" id="playBtn">▶ Start Mission</button>
-    <div id="controls">
-      <div class="row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</div>
-      <div class="row"><kbd>Space</kbd> Jump</div>
-      <div class="row"><kbd>J</kbd>/Click Attack</div>
-      <div class="row"><kbd>1</kbd>-<kbd>4</kbd> Switch weapon</div>
-      <div class="row"><kbd>5</kbd>-<kbd>9</kbd> Pick power</div>
-      <div class="row"><kbd>K</kbd> Use power</div>
-      <div class="row"><kbd>Q</kbd><kbd>E</kbd>/drag Camera</div>
-      <div class="row"><kbd>P</kbd> Pause</div>
+    <!-- autoplaying intro video banner -->
+    <div id="introWrap">
+      <video id="introVid" muted autoplay loop playsinline preload="auto">
+        <source src="Legendary_Fighter_Intro.mp4" type="video/mp4" />
+      </video>
+      <div id="introFade"></div>
     </div>
+
+    <h1 class="titleFont">Legendary<br>Fighter</h1>
+    <div class="tag">▲ CHOOSE YOUR WORLD ▲</div>
+
+    <!-- scene-select cards -->
+    <div id="sceneSelect">
+      <div class="sceneCard" data-scene="space" style="--c:#38e0ff">
+        <div class="sc-ic">🪐</div><div class="sc-n">Space</div>
+        <div class="sc-d">Solar System</div><div class="sc-b">Scene 1 · ★</div></div>
+      <div class="sceneCard" data-scene="ocean" style="--c:#40e0d0">
+        <div class="sc-ic">🌊</div><div class="sc-n">Ocean</div>
+        <div class="sc-d">Swim the Deep</div><div class="sc-b">Scene 2 · ★★</div></div>
+      <div class="sceneCard" data-scene="underground" style="--c:#ff8c2a">
+        <div class="sc-ic">⛏️</div><div class="sc-n">Underground</div>
+        <div class="sc-d">Dark Caverns</div><div class="sc-b">Scene 3 · ★★</div></div>
+      <div class="sceneCard" data-scene="moon" style="--c:#9fe8ff">
+        <div class="sc-ic">🌙</div><div class="sc-n">Moon</div>
+        <div class="sc-d">Low Gravity</div><div class="sc-b">Scene 4 · ★★★</div></div>
+      <div class="sceneCard" data-scene="outer" style="--c:#ff3df0">
+        <div class="sc-ic">✦</div><div class="sc-n">Outer Space</div>
+        <div class="sc-d">Deep Void</div><div class="sc-b">Scene 5 · ★★★★</div></div>
+    </div>
+    <div class="pickHint">Tap a world to begin your rescue</div>
+
     <div id="touchNote">
-      🕹️ Left stick to move &nbsp;·&nbsp; 🗡️ Attack &nbsp;·&nbsp; ⤴ Jump &nbsp;·&nbsp; ✦ Power<br>
-      Drag anywhere to look around &nbsp;·&nbsp; tap the bar to switch weapon / power
+      🕹️ Left stick to move &nbsp;·&nbsp; 🗡️ Attack &nbsp;·&nbsp; ⤴ Jump &nbsp;·&nbsp; ✦ Power &nbsp;·&nbsp; drag to look
+    </div>
+    <div id="kbdNote">
+      <kbd>WASD</kbd> Move · <kbd>Space</kbd> Jump · <kbd>J</kbd> Attack · <kbd>1-4</kbd> Weapon · <kbd>5-9</kbd> Power · <kbd>K</kbd> Use · drag/<kbd>QE</kbd> Camera
     </div>
   </div>
 
@@ -446,8 +504,8 @@
     <div class="stat">Captives rescued: <b id="vRescued">0</b></div>
     <div class="stat">Diamonds: <b id="vDiamonds">0</b> · Money: <b id="vMoney">0</b></div>
     <div class="stat glow">⚡ Thunder upgraded to Tier <b id="vTier">II</b>!</div>
-    <p style="opacity:.7;max-width:460px">The Void Titan falls. The Ocean scene awaits the Legendary Ninja…</p>
-    <button class="btn" id="againBtn">▶ Play Again</button>
+    <p style="opacity:.7;max-width:460px">The monster falls and the captives are free. Choose your next world, Legendary Ninja…</p>
+    <button class="btn" id="againBtn">▶ Choose Scene</button>
   </div>
 
   <!-- ===================== DEFEAT ===================== -->
