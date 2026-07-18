@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  LEGENDARY FIGHTER  —  3D Edition  (Scene 1: SPACE / Solar System)
+  ============================================================================
+  A kid-friendly 3D action-platformer. Play a Legendary Ninja and rescue
+  captive humans across floating space platforms, then defeat the Giant
+  Monster boss to win the scene and power up your Thunder.
+
+  TECH   : HTML5 + WebGL via Three.js (vendored locally in /libs => fully offline).
+  ART    : Generated PNG textures in /assets (skybox, planets, sun, platforms,
+           glow sprites) + procedural 3D models built from primitives.
+
+  CODE MAP (inside the <script> at the bottom):
+    1. CONFIG        - tunable numbers (gravity, speeds, damage, colors)
+    2. ASSETS        - texture loader
+    3. INPUT         - per-player key map (ready for split-screen 2P later)
+    4. HELPERS       - math + particle pool
+    5. ENTITIES      - Player, Enemy, Boss, Projectile, Crystal, Tent, Captive
+    6. LEVEL         - the "Space" scene builder (data-driven)
+    7. GAME          - renderer, camera rig, main loop, HUD, screens
+
+  FUTURE-PROOFING (2-player split-screen):
+    * All player state lives inside the Player class (input map, transform, HP,
+      powers) — no globals. Add a 2nd Player + 2nd camera/viewport to go 2P.
+    * Levels are pure data (see LEVELS). Add Ocean / Underground / Moon / Outer
+      Space by adding entries and reusing every entity class here.
+  ============================================================================
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Legendary Fighter — 3D</title>
+<style>
+  /* ============================ THEME / BASE ============================ */
+  :root{
+    --neon:#38e0ff;         /* cyan */
+    --neon2:#b366ff;        /* violet */
+    --hot:#ff3d81;          /* hot pink */
+    --gold:#ffd54a;         /* gold */
+    --ink:#05010f;          /* deep space */
+    --panel:rgba(12,10,34,.62);
+    --glass:rgba(120,180,255,.14);
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; height:100%; background:var(--ink); overflow:hidden;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
+    color:#eaf2ff; user-select:none; -webkit-user-select:none;
+  }
+  #game{ position:fixed; inset:0; }
+  canvas{ display:block; }
+
+  /* Shared neon text glow */
+  .glow{ text-shadow:0 0 8px var(--neon),0 0 22px var(--neon2); }
+  .titleFont{ font-weight:900; letter-spacing:2px; text-transform:uppercase; }
+
+  /* ============================ HUD ============================ */
+  #hud{ position:fixed; inset:0; pointer-events:none; display:none; }
+  #hud.show{ display:block; }
+
+  /* top-left status stack */
+  #topLeft{ position:absolute; top:16px; left:16px; width:340px; }
+  .barWrap{
+    position:relative; height:26px; border-radius:14px; overflow:hidden;
+    background:rgba(0,0,0,.45);
+    border:1px solid rgba(120,200,255,.35);
+    box-shadow:0 0 14px rgba(56,224,255,.25), inset 0 0 12px rgba(0,0,0,.6);
+    margin-bottom:10px;
+  }
+  .barFill{ position:absolute; inset:0; width:100%; transform-origin:left;
+    transition:transform .18s ease; }
+  #hpFill{ background:linear-gradient(90deg,#00ffa3,#38e0ff 55%,#b366ff); }
+  #hpText{ position:absolute; inset:0; display:flex; align-items:center;
+    justify-content:center; font-size:13px; font-weight:800; letter-spacing:1px;
+    text-shadow:0 1px 3px #000; }
+  .barIcon{ position:absolute; left:8px; top:50%; transform:translateY(-50%);
+    font-size:14px; }
+
+  /* chips row (diamonds / money / rescued) */
+  #chips{ display:flex; gap:8px; flex-wrap:wrap; }
+  .chip{
+    background:var(--panel); border:1px solid var(--glass);
+    border-radius:12px; padding:6px 11px; font-size:14px; font-weight:800;
+    backdrop-filter:blur(6px); box-shadow:0 0 12px rgba(56,224,255,.15);
+    display:flex; gap:6px; align-items:center;
+  }
+  .chip b{ color:var(--gold); font-variant-numeric:tabular-nums; }
+
+  /* top-center scene banner */
+  #sceneBanner{ position:absolute; top:16px; left:50%; transform:translateX(-50%);
+    text-align:center; }
+  #sceneBanner .name{ font-size:18px; }
+  #sceneBanner .sub{ font-size:11px; opacity:.7; letter-spacing:3px; }
+
+  /* boss bar (top, hidden until boss) */
+  #bossBar{ position:absolute; top:70px; left:50%; transform:translateX(-50%);
+    width:min(560px,70vw); display:none; text-align:center; }
+  #bossBar.show{ display:block; }
+  #bossBar .lbl{ font-size:13px; letter-spacing:3px; color:var(--hot);
+    text-shadow:0 0 10px var(--hot); margin-bottom:4px; }
+  #bossBar .barWrap{ height:20px; border-color:rgba(255,80,140,.5);
+    box-shadow:0 0 16px rgba(255,61,129,.4), inset 0 0 12px #000; }
+  #bossFill{ background:linear-gradient(90deg,#ff3d81,#ff8a3d,#ffd54a); }
+
+  /* bottom weapon + power dock */
+  #dock{ position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+    display:flex; gap:18px; align-items:flex-end; }
+  .rack{ display:flex; gap:7px; background:var(--panel); padding:8px 10px;
+    border-radius:14px; border:1px solid var(--glass); backdrop-filter:blur(7px);
+    box-shadow:0 0 16px rgba(56,224,255,.14); }
+  .rackTitle{ position:absolute; top:-16px; left:12px; font-size:9px;
+    letter-spacing:2px; opacity:.6; }
+  .slot{ width:52px; height:52px; border-radius:11px; position:relative;
+    background:rgba(6,10,26,.8); border:1px solid rgba(120,200,255,.22);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-size:20px; line-height:1; transition:.15s; }
+  .slot .k{ position:absolute; top:2px; left:4px; font-size:9px; opacity:.55; }
+  .slot .nm{ font-size:8px; letter-spacing:.5px; margin-top:3px; opacity:.8; }
+  .slot.active{ border-color:var(--neon); background:rgba(56,224,255,.16);
+    box-shadow:0 0 16px var(--neon), inset 0 0 10px rgba(56,224,255,.3);
+    transform:translateY(-4px); }
+  .slot .cd{ position:absolute; inset:0; background:rgba(0,0,0,.62);
+    border-radius:11px; transform-origin:bottom; transform:scaleY(0); }
+  .powerSlot.active{ border-color:var(--neon2); box-shadow:0 0 16px var(--neon2),
+    inset 0 0 10px rgba(179,102,255,.3); }
+
+  /* on-screen hint (bottom-left) */
+  #hint{ position:absolute; bottom:18px; left:18px; max-width:230px;
+    font-size:11px; line-height:1.5; opacity:.62; }
+  #hint b{ color:var(--neon); }
+
+  /* mini objective (top-right) */
+  #objective{ position:absolute; top:16px; right:16px; text-align:right;
+    background:var(--panel); border:1px solid var(--glass); border-radius:12px;
+    padding:8px 12px; font-size:12px; backdrop-filter:blur(6px);
+    box-shadow:0 0 12px rgba(56,224,255,.14); }
+  #objective .h{ font-size:9px; letter-spacing:2px; opacity:.55; }
+  #objective b{ color:var(--gold); }
+
+  /* center toast (pickups / events) */
+  #toast{ position:absolute; top:32%; left:50%; transform:translate(-50%,-50%);
+    font-size:30px; font-weight:900; opacity:0; pointer-events:none;
+    text-shadow:0 0 18px var(--neon2); transition:opacity .25s; }
+
+  /* ============================ SCREENS (menu/win/lose) ============================ */
+  .screen{ position:fixed; inset:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; z-index:20;
+    background:
+      radial-gradient(1200px 700px at 50% -10%,rgba(179,102,255,.28),transparent 60%),
+      radial-gradient(900px 600px at 80% 110%,rgba(56,224,255,.22),transparent 60%),
+      linear-gradient(180deg,#0a0620,#05010f);
+    padding:24px; }
+  .hidden{ display:none !important; }
+
+  #menu h1{ font-size:clamp(40px,9vw,104px); margin:0; line-height:.92;
+    background:linear-gradient(180deg,#fff,#8fd4ff 40%,#b366ff);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 0 26px rgba(120,180,255,.55)); }
+  #menu .tag{ margin:14px 0 6px; letter-spacing:6px; font-size:13px; opacity:.8; }
+  #menu .scene1{ font-size:13px; color:var(--neon); letter-spacing:3px;
+    margin-bottom:26px; }
+
+  .btn{ pointer-events:auto; cursor:pointer; border:none; margin-top:8px;
+    font-family:inherit; font-weight:900; letter-spacing:2px; text-transform:uppercase;
+    font-size:19px; color:#04121c; padding:16px 44px; border-radius:16px;
+    background:linear-gradient(180deg,#7ff0ff,#38e0ff 45%,#7a8bff);
+    box-shadow:0 8px 30px rgba(56,224,255,.5),0 0 0 2px rgba(255,255,255,.25) inset;
+    transition:.15s; }
+  .btn:hover{ transform:translateY(-3px) scale(1.03);
+    box-shadow:0 14px 40px rgba(56,224,255,.7); }
+  .btn.ghost{ background:transparent; color:#cfe6ff; font-size:14px; padding:11px 26px;
+    box-shadow:0 0 0 1px rgba(140,200,255,.4) inset; }
+
+  /* controls card on menu */
+  #controls{ margin-top:26px; display:grid; grid-template-columns:repeat(2,auto);
+    gap:6px 30px; font-size:13px; opacity:.85; text-align:left;
+    background:var(--panel); border:1px solid var(--glass); border-radius:16px;
+    padding:18px 26px; backdrop-filter:blur(6px); }
+  #controls kbd{ display:inline-block; min-width:20px; padding:1px 7px; margin:0 2px;
+    border-radius:6px; background:#14213f; border:1px solid rgba(140,200,255,.4);
+    font-family:inherit; font-size:12px; }
+  #controls .row{ display:flex; align-items:center; gap:8px; }
+
+  #victory h1,#defeat h1{ font-size:clamp(34px,7vw,78px); margin:0; }
+  #victory h1{ color:var(--gold); text-shadow:0 0 30px var(--gold); }
+  #defeat h1{ color:var(--hot); text-shadow:0 0 30px var(--hot); }
+  .stat{ margin:6px 0; font-size:16px; }
+  .stat b{ color:var(--neon); }
+
+  /* loading */
+  #loader{ z-index:30; }
+  #loader .ring{ width:74px; height:74px; border-radius:50%;
+    border:5px solid rgba(120,200,255,.15); border-top-color:var(--neon);
+    animation:spin 1s linear infinite; margin-bottom:22px; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  #loader .p{ letter-spacing:4px; font-size:13px; opacity:.75; }
+
+  /* pause hint */
+  #paused{ z-index:19; background:rgba(5,1,15,.72); }
+  #paused h2{ font-size:44px; margin:0 0 8px; }
+  /* ==========================================================================
+     3D / GLOSS ENHANCEMENT LAYER — layered on top for depth & polish
+     ========================================================================== */
+
+  /* cinematic vignette + subtle animated scanlines over the whole view */
+  #fxOverlay{ position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(125% 125% at 50% 45%, transparent 55%, rgba(2,0,10,.6) 100%); }
+  #fxOverlay::after{ content:""; position:absolute; inset:0; opacity:.45;
+    background:repeating-linear-gradient(0deg, rgba(160,210,255,.05) 0 1px, transparent 1px 3px);
+    animation:scan 7s linear infinite; }
+  @keyframes scan{ from{background-position:0 0} to{background-position:0 90px} }
+
+  /* glassy panels gain real depth (outer glow + inset highlight + drop shadow) */
+  .chip, #objective, .rack{
+    background:linear-gradient(160deg, rgba(60,95,190,.24), rgba(10,9,30,.62));
+    border:1px solid rgba(150,205,255,.30);
+    box-shadow:0 8px 24px rgba(0,0,0,.55), 0 0 18px rgba(56,224,255,.16),
+      inset 0 1px 0 rgba(255,255,255,.28), inset 0 -7px 16px rgba(0,0,0,.4);
+    backdrop-filter:blur(10px) saturate(1.25); }
+  .chip{ transition:transform .15s; } .chip:hover{ transform:translateY(-2px); }
+
+  /* HP / boss bars: glossy tube with top highlight + moving sheen */
+  .barWrap{ background:linear-gradient(180deg,#02030a,#0a1226);
+    box-shadow:0 5px 16px rgba(0,0,0,.55), 0 0 16px rgba(56,224,255,.22),
+      inset 0 2px 5px rgba(0,0,0,.85), inset 0 1px 0 rgba(255,255,255,.14); }
+  .barWrap::before{ content:""; position:absolute; left:2px; right:2px; top:2px; height:42%;
+    border-radius:12px; z-index:3; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.4), transparent); }
+  .barFill{ box-shadow:0 0 14px rgba(56,224,255,.55), inset 0 0 12px rgba(255,255,255,.22); overflow:hidden; }
+  .barFill::after{ content:""; position:absolute; inset:0;
+    background:linear-gradient(100deg, transparent 25%, rgba(255,255,255,.55) 50%, transparent 75%);
+    transform:translateX(-130%); animation:sheen 2.8s ease-in-out infinite; }
+  @keyframes sheen{ 0%{transform:translateX(-130%)} 55%,100%{transform:translateX(240%)} }
+  #hpText{ z-index:4; }
+  #bossBar .barWrap{ animation:bosspulse 1.3s ease-in-out infinite; }
+  @keyframes bosspulse{ 0%,100%{box-shadow:0 0 16px rgba(255,61,129,.45),inset 0 0 12px #000}
+    50%{box-shadow:0 0 32px rgba(255,61,129,.9),inset 0 0 12px #000} }
+
+  /* DOCK tilts into the screen; slots become glossy 3D keycaps */
+  #dock{ transform:translateX(-50%) perspective(950px) rotateX(15deg); transform-origin:bottom center; }
+  .slot{ background:linear-gradient(180deg,#1b2648,#070b18);
+    box-shadow:0 5px 0 #05070f, 0 9px 16px rgba(0,0,0,.6),
+      inset 0 1px 0 rgba(255,255,255,.22), inset 0 -5px 9px rgba(0,0,0,.5);
+    transition:transform .14s cubic-bezier(.2,1.5,.4,1), box-shadow .14s, border-color .14s; }
+  .slot:hover{ transform:translateY(-2px); }
+  .weaponSlot.active{ transform:translateY(-9px) scale(1.07);
+    background:linear-gradient(180deg,rgba(56,224,255,.32),#0a2740); border-color:var(--neon);
+    box-shadow:0 11px 0 #04202e,0 15px 26px rgba(0,0,0,.6),0 0 24px var(--neon),
+      inset 0 1px 0 rgba(255,255,255,.55); }
+  .powerSlot.active{ transform:translateY(-9px) scale(1.07);
+    background:linear-gradient(180deg,rgba(179,102,255,.32),#25103f); border-color:var(--neon2);
+    box-shadow:0 11px 0 #1a0a2e,0 15px 26px rgba(0,0,0,.6),0 0 24px var(--neon2),
+      inset 0 1px 0 rgba(255,255,255,.55); }
+
+  /* raised 3D buttons */
+  .btn{ box-shadow:0 6px 0 #1f6d8a, 0 12px 26px rgba(56,224,255,.45), inset 0 2px 0 rgba(255,255,255,.6); }
+  .btn:active{ transform:translateY(4px) scale(.99); box-shadow:0 2px 0 #1f6d8a,0 6px 16px rgba(56,224,255,.4); }
+  .btn.ghost{ box-shadow:0 0 0 1px rgba(140,200,255,.4) inset; }
+  .btn.ghost:active{ transform:translateY(2px); }
+
+  /* extruded, gently floating title */
+  #menu h1{ animation:float 4.5s ease-in-out infinite;
+    text-shadow:0 1px 0 #6ad0ff,0 2px 0 #4aa8e6,0 3px 0 #3a86c0,0 4px 0 #2a6499,
+      0 6px 20px rgba(0,0,0,.6),0 0 44px rgba(120,180,255,.6); }
+  @keyframes float{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+
+  /* animated perspective grid behind the menu for depth */
+  #menu::before{ content:""; position:absolute; inset:0; z-index:-1;
+    background-image:linear-gradient(rgba(56,224,255,.14) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(56,224,255,.14) 1px,transparent 1px);
+    background-size:64px 64px;
+    transform:perspective(520px) rotateX(62deg) translateY(28%) scale(2.2); transform-origin:bottom;
+    -webkit-mask-image:linear-gradient(transparent, #000 65%); mask-image:linear-gradient(transparent,#000 65%);
+    animation:grid 7s linear infinite; }
+  @keyframes grid{ from{background-position:0 0} to{background-position:0 64px} }
+
+  /* toast: 3D pop */
+  #toast{ text-shadow:0 2px 0 #7a3bd8, 0 4px 24px rgba(179,102,255,.85); }
+</style>
+</head>
+<body>
+  <div id="game"></div>
+  <div id="fxOverlay"></div>
+
+  <!-- ===================== HUD OVERLAY ===================== -->
+  <div id="hud">
+    <div id="topLeft">
+      <div class="barWrap">
+        <span class="barIcon">❤️</span>
+        <div id="hpFill" class="barFill"></div>
+        <div id="hpText">100 / 100</div>
+      </div>
+      <div id="chips">
+        <div class="chip">💎 <b id="diamonds">0</b></div>
+        <div class="chip">💰 <b id="money">0</b></div>
+        <div class="chip">⚡ Thunder&nbsp;<b id="thunderTier">I</b></div>
+      </div>
+    </div>
+
+    <div id="sceneBanner">
+      <div class="name titleFont glow">SPACE — Solar System</div>
+      <div class="sub">SCENE 1 OF 5</div>
+    </div>
+
+    <div id="objective">
+      <div class="h">OBJECTIVE</div>
+      <div>Rescue <b id="rescuedN">0</b>/<b id="rescuedTot">4</b> · Defeat the Boss</div>
+    </div>
+
+    <div id="bossBar">
+      <div class="lbl titleFont">◈ VOID TITAN ◈</div>
+      <div class="barWrap"><div id="bossFill" class="barFill"></div></div>
+    </div>
+
+    <div id="dock">
+      <div class="rack" style="position:relative">
+        <div class="rackTitle">WEAPONS · 1-4</div>
+        <div class="slot weaponSlot active" data-i="0"><span class="k">1</span>🗡️<span class="nm">KATANA</span></div>
+        <div class="slot weaponSlot" data-i="1"><span class="k">2</span>🔪<span class="nm">KUNAI</span></div>
+        <div class="slot weaponSlot" data-i="2"><span class="k">3</span>✴️<span class="nm">SHURIKEN</span></div>
+        <div class="slot weaponSlot" data-i="3"><span class="k">4</span>🔧<span class="nm">TANTO</span></div>
+      </div>
+      <div class="rack" style="position:relative">
+        <div class="rackTitle">POWERS · 5-9 · use=K</div>
+        <div class="slot powerSlot active" data-i="0"><span class="k">5</span>💨<span class="nm">SPEED</span><div class="cd"></div></div>
+        <div class="slot powerSlot" data-i="1"><span class="k">6</span>⚡<span class="nm">THUNDER</span><div class="cd"></div></div>
+        <div class="slot powerSlot" data-i="2"><span class="k">7</span>🌑<span class="nm">DARK</span><div class="cd"></div></div>
+        <div class="slot powerSlot" data-i="3"><span class="k">8</span>🌱<span class="nm">EARTH</span><div class="cd"></div></div>
+        <div class="slot powerSlot" data-i="4"><span class="k">9</span>🌀<span class="nm">WARP</span><div class="cd"></div></div>
+      </div>
+    </div>
+
+    <div id="hint">
+      Move <b>WASD</b> · Jump <b>Space</b> · Attack <b>J / Click</b><br>
+      Power <b>K</b> · Camera <b>drag / Q E</b> · Pause <b>P</b>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+  <!-- ===================== LOADING ===================== -->
+  <div id="loader" class="screen">
+    <div class="ring"></div>
+    <div class="p glow">FORGING THE LEGEND…</div>
+  </div>
+
+  <!-- ===================== MENU ===================== -->
+  <div id="menu" class="screen hidden">
+    <h1 class="titleFont">Legendary<br>Fighter</h1>
+    <div class="tag">▲ THE LEGENDARY NINJA RISES ▲</div>
+    <div class="scene1">SCENE 1 · SPACE — RESCUE THE CAPTIVES</div>
+    <button class="btn" id="playBtn">▶ Start Mission</button>
+    <div id="controls">
+      <div class="row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</div>
+      <div class="row"><kbd>Space</kbd> Jump</div>
+      <div class="row"><kbd>J</kbd>/Click Attack</div>
+      <div class="row"><kbd>1</kbd>-<kbd>4</kbd> Switch weapon</div>
+      <div class="row"><kbd>5</kbd>-<kbd>9</kbd> Pick power</div>
+      <div class="row"><kbd>K</kbd> Use power</div>
+      <div class="row"><kbd>Q</kbd><kbd>E</kbd>/drag Camera</div>
+      <div class="row"><kbd>P</kbd> Pause</div>
+    </div>
+  </div>
+
+  <!-- ===================== PAUSE ===================== -->
+  <div id="paused" class="screen hidden">
+    <h2 class="titleFont glow">Paused</h2>
+    <button class="btn" id="resumeBtn">Resume</button>
+    <button class="btn ghost" id="quitBtn">Quit to Menu</button>
+  </div>
+
+  <!-- ===================== VICTORY ===================== -->
+  <div id="victory" class="screen hidden">
+    <h1 class="titleFont">SCENE CLEARED!</h1>
+    <div class="stat">Captives rescued: <b id="vRescued">0</b></div>
+    <div class="stat">Diamonds: <b id="vDiamonds">0</b> · Money: <b id="vMoney">0</b></div>
+    <div class="stat glow">⚡ Thunder upgraded to Tier <b id="vTier">II</b>!</div>
+    <p style="opacity:.7;max-width:460px">The Void Titan falls. The Ocean scene awaits the Legendary Ninja…</p>
+    <button class="btn" id="againBtn">▶ Play Again</button>
+  </div>
+
+  <!-- ===================== DEFEAT ===================== -->
+  <div id="defeat" class="screen hidden">
+    <h1 class="titleFont">YOU FELL…</h1>
+    <div class="stat">The captives still need you, Ninja.</div>
+    <button class="btn" id="retryBtn">↻ Try Again</button>
+  </div>
+
+  <!-- Three.js vendored locally so the game runs 100% offline -->
+  <script src="libs/three.min.js"></script>
+  <!-- Textures embedded as data-URIs => works by double-click (file://) on any browser -->
+  <script src="assets_embedded.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
