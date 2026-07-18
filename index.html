@@ -335,7 +335,8 @@
     .rack .nm{ display:none; }                            /* compact slots on phones */
     .slot{ width:44px; height:44px; }
   }
-  html,body{ overscroll-behavior:none; }
+  html,body{ overscroll-behavior:none; touch-action:manipulation; }  /* kill double-tap zoom */
+  .btn, .slot, .chip, .mbtn, #joyBase, #btnPause{ touch-action:none; -webkit-user-select:none; user-select:none; }
 
   /* menu: swap the keyboard card for a touch note on touch devices */
   #touchNote{ display:none; margin-top:22px; max-width:460px; font-size:13px; line-height:1.7;
